@@ -27,6 +27,8 @@ A simple Node.js demonstration application showing how to integrate [Dorvis](htt
    cp .env.example .env
    ```
 
+   .env.example contains working configuration against Demo environment. See [Configuration options](#configuration-options) to configure for production use.
+
 2. Edit `.env` with your Dorvis credentials:
 
    ```dotenv
@@ -70,15 +72,14 @@ The application will start at <http://localhost:3000>
 
 ## Configuration Options
 
-| Environment Variable | Description | Example |
-|---------------------|-------------|---------|
-| `OIDC_ISSUER_URL` | Dorvis OIDC endpoint | `https://dorvis.eu/oidc` |
-| `OIDC_CLIENT_ID` | Your Dorvis client ID | `oidc-demo-nodejs-demo` |
-| `OIDC_CLIENT_SECRET` | Your Dorvis client secret | `secret123` |
-| `OIDC_REDIRECT_URL` | Callback URL after authentication | `http://localhost:3000/callback` |
-| `ACR_VALUES` | Comma-separated list of identity providers | `Swedbank,Seb,Luminor` |
-| `PORT` | Server port (optional) | `3000` |
-| `SESSION_SECRET` | Session encryption key (optional) | `random-string` |
+| Variable | Description | Demo Value | Production Example |
+|----------|-------------|------------|-------------------|
+| `OIDC_ISSUER_URL` | Dorvis OIDC endpoint | `https://demo.dorvis.eu/oidc` | `https://dorvis.eu/oidc` |
+| `OIDC_CLIENT_ID` | Your Dorvis client ID | `dorvis_demo_post` | `your-client-id` |
+| `OIDC_CLIENT_SECRET` | Your Dorvis client secret | `dorvis_demo_secret` | `your-secret` |
+| `OIDC_REDIRECT_URL` | Callback URL after authentication (must be whitelisted in Dorvis client portal)| `http://localhost:3000/callback` | `https://your-domain.com/callback` |
+| `ACR_VALUES` | Comma-separated identity providers to show on login page | `Smartid` | `Swedbank,Seb,Luminor,Citadele,eParaksts,eParaksts-mobile,Smartid` |
+| `PORT` | Server port | `3000` | `3000` |
 
 ## Learn More
 
