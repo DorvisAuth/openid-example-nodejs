@@ -80,21 +80,39 @@ app.get('/', function (req, res) {
 });
 
 app.get('/callback',
-  passport.authenticate('openidconnect',
-    { failureRedirect: '/login', failureMessage: true }),
-  async (req, res) => {
-    if (!req.user) {
-      return res.status(400).render('error.html', {
-        Error: 'Authentication failed.',
-        LoginUrl: '/'
+  (req, res, next) => {
+    passport.authenticate('openidconnect', (err, user, info) => {
+      if (err) {
+        console.error('Authentication error:', err);
+        return res.status(500).render('error.html', {
+          Error: err.code || 'Authentication error occurred',
+          LoginUrl: '/'
+        });
+      }
+      
+      if (!user) {
+        console.error('Authentication failed:', info);
+        return res.status(401).render('error.html', {
+          Error: info?.message || 'Authentication failed',
+          LoginUrl: '/'
+        });
+      }
+      
+      req.logIn(user, (err) => {
+        if (err) {
+          console.error('Login error:', err);
+          return res.status(500).render('error.html', {
+            Error: 'Failed to establish session',
+            LoginUrl: '/'
+          });
+        }
+        
+        console.log('User successfully authenticated:', user);
+        res.render('callback.html', {
+          user: user
+        });
       });
-    }
-
-    console.log('User successfully authenticated:', req.user);
-
-    res.render('callback.html', {
-      user: req.user
-    });
+    })(req, res, next);
   });
 
 const port = process.env.PORT || 3000;
