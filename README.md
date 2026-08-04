@@ -32,19 +32,22 @@ Copy the environment configuration from example.
 
 ### 3. Install Dependencies
 
+This project uses [Bun](https://bun.sh) as its package manager.
+
 ```bash
-npm install
+bun install
 ```
 
 ### 4. Run the Application
 
 ```bash
-npm start
+bun start
 ```
 
 The application will start at <http://localhost:3000>
 
-> Dependencies, tests, and the build run with [Bun](https://bun.sh): `bun install`, `bun test`, `bun run build`.
+> The app itself is plain Node.js — `bun start` just runs `node --env-file-if-exists=.env app.js`.
+> Tests and the build use Bun directly: `bun test`, `bun run build`.
 
 ## How to Use
 

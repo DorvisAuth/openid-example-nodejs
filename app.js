@@ -1,4 +1,3 @@
-import dotenv from 'dotenv';
 import express from 'express';
 import ejs from 'ejs';
 import path from 'path';
@@ -6,7 +5,11 @@ import session from 'express-session';
 import passport from 'passport';
 import OpenIDConnectStrategy from 'passport-openidconnect';
 
-dotenv.config();
+for (const key of ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_REDIRECT_URL', 'ACR_VALUES']) {
+  if (!process.env[key]) {
+    throw new Error(`Missing required environment variable ${key}. Copy .env.example to .env and fill it in.`);
+  }
+}
 
 const app = express();
 
@@ -19,8 +22,6 @@ app.use(session({
 }));
 app.use(passport.initialize());
 app.use(passport.session());
-
-app.use('/static', express.static(path.join(process.cwd(), 'templates')));
 
 app.engine('html', ejs.renderFile);
 app.set('view engine', 'html');
@@ -66,7 +67,7 @@ app.get('/login', (req, res, next) => {
   passport.authenticate('openidconnect', req.query.acr_values ? { acr_values: req.query.acr_values } : {})(req, res, next);
 });
 
-app.get('/logout', function (req, res) {
+app.get('/logout', function (req, res, next) {
   req.logout(function (err) {
     if (err) { return next(err); }
     res.redirect('/');
@@ -114,6 +115,16 @@ app.get('/callback',
       });
     })(req, res, next);
   });
+
+// Last-resort handler so an unexpected throw renders the error page instead of
+// leaking a stack trace to the browser.
+app.use(function (err, req, res, next) {
+  console.error('Unhandled error:', err);
+  res.status(500).render('error.html', {
+    Error: 'An unexpected error occurred.',
+    LoginUrl: '/',
+  });
+});
 
 export default app;
 

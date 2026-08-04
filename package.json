@@ -4,16 +4,23 @@
   "type": "module",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js",
+    "start": "node --env-file-if-exists=.env app.js",
     "build": "bun build ./app.js --target node --outdir ./dist",
     "test": "bun test"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "openid-connect",
+    "oidc",
+    "dorvis",
+    "passport"
+  ],
+  "author": "Dorvis <dativa@dativa.lv>",
+  "license": "MIT",
+  "description": "Node.js demo of OpenID Connect authentication against the Dorvis authentication hub",
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
-    "dotenv": "^17.2.3",
     "ejs": "^6.0.1",
     "express": "^5.2.1",
     "express-session": "^1.18.2",
