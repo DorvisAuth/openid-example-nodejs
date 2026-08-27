@@ -1,11 +1,11 @@
 import express from 'express';
 import ejs from 'ejs';
 import path from 'path';
+import crypto from 'crypto';
 import session from 'express-session';
-import passport from 'passport';
-import OpenIDConnectStrategy from 'passport-openidconnect';
+import * as client from 'openid-client';
 
-for (const key of ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_REDIRECT_URL', 'ACR_VALUES']) {
+for (const key of ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'OIDC_REDIRECT_URL']) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable ${key}. Copy .env.example to .env and fill it in.`);
   }
@@ -13,108 +13,109 @@ for (const key of ['OIDC_ISSUER_URL', 'OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'O
 
 const app = express();
 
-const ACR_VALUES = process.env.ACR_VALUES.split(',');
+const PROVIDERS = (process.env.PROVIDERS || '').split(',').filter(Boolean);
+
+const config = await client.discovery(new URL(process.env.OIDC_ISSUER_URL), process.env.OIDC_CLIENT_ID, process.env.OIDC_CLIENT_SECRET)
 
 app.use(session({
-  secret: 'some-random-string',
+  secret: crypto.randomBytes(32).toString('hex'),
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false,
+  cookie: { httpOnly: true, secure: 'auto', sameSite: 'lax' },
 }));
-app.use(passport.initialize());
-app.use(passport.session());
 
 app.engine('html', ejs.renderFile);
 app.set('view engine', 'html');
 app.set('views', path.join(process.cwd(), 'templates'));
 
-const strategy = new OpenIDConnectStrategy({
-  issuer: process.env.OIDC_ISSUER_URL,
-  authorizationURL: `${process.env.OIDC_ISSUER_URL}/oauth2/auth`,
-  tokenURL: `${process.env.OIDC_ISSUER_URL}/oauth2/token`,
-  userInfoURL: `${process.env.OIDC_ISSUER_URL}/userinfo`,
-  clientID: process.env.OIDC_CLIENT_ID,
-  clientSecret: process.env.OIDC_CLIENT_SECRET,
-  callbackURL: `${process.env.OIDC_REDIRECT_URL}`,
-  scope: 'profile',
-  passReqToCallback: true,
-},
-  function verify(req, issuer, profile, cb) {
-    return cb(null, profile);
+app.get('/login', async (req, res) => {
+  const code_verifier = client.randomPKCECodeVerifier();
+  const code_challenge = await client.calculatePKCECodeChallenge(code_verifier);
+  const state = client.randomState();
+  const nonce = client.randomNonce();
+
+  req.session.oidc = { code_verifier, state, nonce };
+
+  const params = {
+    redirect_uri: process.env.OIDC_REDIRECT_URL,
+    scope: 'openid profile',
+    code_challenge,
+    code_challenge_method: 'S256',
+    state,
+    nonce,
+  };
+
+  if (req.query.acr_values) {
+    params.acr_values = req.query.acr_values;
   }
-);
 
-strategy.authorizationParams = function (options) {
-  const params = {};
-  if (options.acr_values) {
-    params.acr_values = options.acr_values;
-  }
-  return params;
-};
-
-
-passport.use(strategy);
-
-passport.serializeUser(function (user, done) {
-  done(null, user);
+  res.redirect(client.buildAuthorizationUrl(config, params).href);
 });
 
-passport.deserializeUser(function (obj, done) {
-  done(null, obj);
-});
+app.get('/logout', function (req, res) {
+  const idToken = req.session.user?.idToken;
 
-app.get('/login', (req, res, next) => {
+  req.session.destroy(function () {
+    if (!idToken || !config.serverMetadata().end_session_endpoint) {
+      return res.redirect('/');
+    }
 
-  passport.authenticate('openidconnect', req.query.acr_values ? { acr_values: req.query.acr_values } : {})(req, res, next);
-});
-
-app.get('/logout', function (req, res, next) {
-  req.logout(function (err) {
-    if (err) { return next(err); }
-    res.redirect('/');
+    const endSessionUrl = client.buildEndSessionUrl(config, {
+      id_token_hint: idToken,
+      post_logout_redirect_uri: `${req.protocol}://${req.get('host')}`,
+    });
+    res.redirect(endSessionUrl.href);
   });
 });
 
 app.get('/', function (req, res) {
-  res.render('login', {
-    providers: ACR_VALUES,
+  res.render('login.html', {
+    providers: PROVIDERS,
   });
 });
 
-app.get('/callback',
-  (req, res, next) => {
-    passport.authenticate('openidconnect', (err, user, info) => {
-      if (err) {
-        console.error('Authentication error:', err);
-        return res.status(500).render('error.html', {
-          Error: err.code || 'Authentication error occurred',
-          LoginUrl: '/'
-        });
-      }
-      
-      if (!user) {
-        console.error('Authentication failed:', info);
-        return res.status(401).render('error.html', {
-          Error: info?.message || 'Authentication failed',
-          LoginUrl: '/'
-        });
-      }
-      
-      req.logIn(user, (err) => {
-        if (err) {
-          console.error('Login error:', err);
-          return res.status(500).render('error.html', {
-            Error: 'Failed to establish session',
-            LoginUrl: '/'
-          });
-        }
-        
-        console.log('User successfully authenticated:', user);
-        res.render('callback.html', {
-          user: user
-        });
-      });
-    })(req, res, next);
+app.get('/callback', async (req, res) => {
+  if (!req.session.oidc){
+    return res.status(400).render('error.html', {
+      Error: 'Your login session expired. Please start again.',
+      LoginUrl: '/'
+    });
+  }
+  const { code_verifier, state, nonce } = req.session.oidc;
+  delete req.session.oidc;
+  const currentUrl = new URL(`${req.protocol}://${req.get('host')}${req.originalUrl}`);
+
+  let tokens;
+  try {
+    tokens = await client.authorizationCodeGrant(config, currentUrl, {
+      pkceCodeVerifier: code_verifier,
+      expectedState: state,
+      expectedNonce: nonce,
+    });
+  } catch (err) {
+    console.error('Authentication error:', err);
+    return res.status(400).render('error.html', {
+      Error: err.error || err.message || 'Authentication error occurred',
+      LoginUrl: '/'
+    });
+  }
+
+  const claims = tokens.claims();
+  const user = {
+    name: {
+      givenName: claims.given_name,
+      familyName: claims.family_name,
+    },
+    person_code: claims.person_code,
+    idToken: tokens.id_token,
+  };
+
+  req.session.user = user;
+
+  res.render('callback.html', {
+    user: user
   });
+});
 
 // Last-resort handler so an unexpected throw renders the error page instead of
 // leaking a stack trace to the browser.

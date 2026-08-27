@@ -11,8 +11,7 @@
   "keywords": [
     "openid-connect",
     "oidc",
-    "dorvis",
-    "passport"
+    "dorvis"
   ],
   "author": "Dorvis <dativa@dativa.lv>",
   "license": "MIT",
@@ -24,7 +23,6 @@
     "ejs": "^6.0.1",
     "express": "^5.2.1",
     "express-session": "^1.18.2",
-    "passport": "^0.7.0",
-    "passport-openidconnect": "^0.1.2"
+    "openid-client": "^6.8.7"
   }
 }
